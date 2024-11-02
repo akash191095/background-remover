@@ -1,20 +1,7 @@
 <script lang="ts">
 	import { writable } from 'svelte/store';
 	import { fade } from 'svelte/transition';
-
-	interface SuccessResponse {
-		success: true;
-		message: string;
-		result: string; // Blob will be serialized to a Base64 string
-	}
-
-	interface ErrorResponse {
-		success?: false;
-		message?: string;
-		error?: string;
-	}
-
-	type ApiResponse = SuccessResponse | ErrorResponse;
+	import { removeBackground } from '@imgly/background-removal';
 
 	const processedImage = writable<Blob | null>(null);
 	const responseMessage = writable<string>('');
@@ -27,7 +14,7 @@
 			const url = URL.createObjectURL($processedImage);
 			const a = document.createElement('a');
 			a.href = url;
-			a.download = 'processed-image.png'; // or whatever filename you want
+			a.download = 'processed-image.png';
 			document.body.appendChild(a);
 			a.click();
 			document.body.removeChild(a);
@@ -53,35 +40,18 @@
 	async function handleSubmit(event: SubmitEvent) {
 		event.preventDefault();
 		const formData = new FormData(event.target as HTMLFormElement);
+		const file = formData.get('image');
+		if (!file || !(file instanceof File)) {
+			responseMessage.set('No valid file uploaded');
+			return;
+		}
 		try {
 			isLoading.set(true);
-			const response = await fetch('/api/remove-background', {
-				method: 'POST',
-				body: formData
-			});
-
-			const result: ApiResponse = await response.json();
-
-			if ('success' in result && result.success) {
-				// Convert the Base64 string back to a Blob
-				const byteCharacters = atob(result.result.split(',')[1]);
-				const byteNumbers = new Array(byteCharacters.length);
-				for (let i = 0; i < byteCharacters.length; i++) {
-					byteNumbers[i] = byteCharacters.charCodeAt(i);
-				}
-				const byteArray = new Uint8Array(byteNumbers);
-				const blob = new Blob([byteArray], { type: 'image/png' });
-
-				processedImage.set(blob);
-				responseMessage.set(result.message);
-				isProcessed.set(true);
-				isLoading.set(false);
-			} else {
-				processedImage.set(null);
-				responseMessage.set(result.message || result.error || 'An error occurred');
-			}
-
-			console.log('Response processed:', result.message);
+			const data: Blob = await removeBackground(file);
+			processedImage.set(data);
+			responseMessage.set('Background removed successfully');
+			isProcessed.set(true);
+			isLoading.set(false);
 		} catch (error) {
 			console.error('Error:', error);
 			responseMessage.set('An error occurred while processing the image.');
